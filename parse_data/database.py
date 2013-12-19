@@ -85,30 +85,39 @@ class DB:
 		Weather.create_table()
 
 	# Adds the taxi data to the db
-	def addTaxiPickup(self, pickupDict):
-		pickup = TaxiPickup()
-
-		pickup.trip_id = pickupDict['ID']
-		pickup.time = datetime.datetime.strptime(pickupDict['DROPOFF_TIME'], '%Y-%m-%d %H:%M:%S')
-		pickup.address = pickupDict['DROPOFF_ADDRESS']
-		pickup.longitude = pickupDict['DROPOFF_LONG']
-		pickup.latitude = pickupDict['DROPOFF_LAT']
-
-		# Write the new row to the database
-		pickup.save()
+	def addTaxiDropoffs(self, dropoffDicts):
+		self.addTaxiDicts(dropoffDicts, 'taxidropoff', self.dropoffDictToSQLString)
 
 	# Adds the taxi data to the db
-	def addTaxiDropoff(self, dropoffDict):
-		dropoff = TaxiDropoff()
+	def addTaxiPickups(self, pickupDicts):
+		self.addTaxiDicts(pickupDicts, 'taxipickup', self.pickupDictToSQLString)
 
-		dropoff.trip_id = dropoffDict['ID']
-		dropoff.time = datetime.datetime.strptime(dropoffDict['DROPOFF_TIME'], '%m/%d/%Y %H:%M')
-		dropoff.address = dropoffDict['DROPOFF_ADDRESS']
-		dropoff.longitude = dropoffDict['DROPOFF_LONG']
-		dropoff.latitude = dropoffDict['DROPOFF_LAT']
+	def dropoffDictToSQLString(self, dropoffDict):
+		for format in ('%m/%d/%Y %H:%M', '%m/%d/%y %I:%M %p'):
+			try:
+				date = datetime.datetime.strptime(dropoffDict['DROPOFF_TIME'], format)
+				break
+			except ValueError:
+				pass
 
-		# Write the new row to the database
-		dropoff.save()
+		string = ','.join((dropoffDict['ID'], '"%s"' % date.strftime('%Y-%m-%d %H:%M:%S'), '"%s"' % dropoffDict['DROPOFF_ADDRESS'], dropoffDict['DROPOFF_LONG'], dropoffDict['DROPOFF_LAT']))
+		return '(%s)' % string
+
+	def pickupDictToSQLString(self, pickupDict):
+		string = ','.join((pickupDict['ID'], '"%s"' % pickupDict['DROPOFF_TIME'], '"%s"' % pickupDict['DROPOFF_ADDRESS'], pickupDict['DROPOFF_LONG'], pickupDict['DROPOFF_LAT']))
+		return '(%s)' % string
+
+	def addTaxiDicts(self, taxiDicts, tableName, dictToSQLString):
+		# Paginate so the queries don't get too long
+		index = 0
+		insertsPerQuery = 10000
+		while index < len(taxiDicts):
+			print 'Percent complete:', 100.0 * index / len(taxiDicts)
+
+			args = ','.join((dictToSQLString(taxiDict) for taxiDict in taxiDicts[index:index+insertsPerQuery] if taxiDict['ID'] != 'ID' and taxiDict['ID'] != 'TRIP_ID'))
+			database.execute_sql('INSERT INTO %s (trip_id, time, address, longitude, latitude) VALUES %s' % (tableName, args))
+
+			index += insertsPerQuery
 
 	# Adds the weather data to the db
 	def addWeather(self, weatherDict):

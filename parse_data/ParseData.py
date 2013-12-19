@@ -14,14 +14,12 @@ WEATHER_FILENAME = os.path.join(DATA_FOLDER, 'wunderground.json')
 def parsePickups(db):
 	print 'Parsing Taxi Pickups'
 	with open(PICKUPS_FILENAME) as f:
-		for row in csv.DictReader(f, fieldnames=['ID', 'DROPOFF_TIME', 'DROPOFF_ADDRESS', 'DROPOFF_LONG', 'DROPOFF_LAT']):
-			db.addTaxiPickup(row)
+		db.addTaxiPickups(list(csv.DictReader(f, fieldnames=['ID', 'DROPOFF_TIME', 'DROPOFF_ADDRESS', 'DROPOFF_LONG', 'DROPOFF_LAT'])))
 
 def parseDropoffs(db):
 	print 'Parsing Taxi Dropoffs'
 	with open(DROPOFFS_FILENAME) as f:
-		for row in csv.DictReader(f):
-			db.addTaxiDropoff(row)
+		db.addTaxiDropoffs(list(csv.DictReader(f)))
 
 def parseWeather(db):
 	print 'Parsing Weather'
@@ -33,6 +31,6 @@ def parseWeather(db):
 
 if __name__ == '__main__':
 	with DB() as db:
-		parseWeather(db)
+		# parseWeather(db)
 		parsePickups(db)
 		parseDropoffs(db)

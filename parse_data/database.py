@@ -4,6 +4,9 @@ from peewee import MySQLDatabase, Model, CharField, DateTimeField, IntegerField,
 
 database = MySQLDatabase('big_data', host='localhost', port=3306, user='root', passwd='')
 
+WEATHER_FIELD_LIST = ['heatindexm', 'windchillm', 'wdird', 'windchilli', 'hail', 'heatindexi', 'wgusti', 'thunder', 'pressurei', 'snow', 'pressurem', 'fog', 'vism', 'wgustm', 'tornado', 'hum', 'tempi', 'tempm', 'dewptm', 'rain', 'dewpti', 'precipm', 'wspdi', 'wspdm', 'visi']
+
+
 # Database must use utf8mb4 for smileys and other such nonesense
 # ALTER DATABASE hn CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
@@ -15,14 +18,14 @@ class BaseModel(Model):
 
 class TaxiPickup(BaseModel):
 	trip_id = IntegerField()
-	time = DateTimeField(formats='%m/%d/%Y %H:%M')
+	time = DateTimeField()
 	address = TextField()
 	longitude = DecimalField(max_digits=9, decimal_places=6)  # Range: (-180, 180)
 	latitude = DecimalField(max_digits=9, decimal_places=6)   # Range: (-90, 90)
 
 class TaxiDropoff(BaseModel):
 	trip_id = IntegerField()
-	time = DateTimeField(formats='%m/%d/%Y %H:%M')
+	time = DateTimeField()
 	address = TextField()
 	longitude = DecimalField(max_digits=9, decimal_places=6)  # Range: (-180, 180)
 	latitude = DecimalField(max_digits=9, decimal_places=6)   # Range: (-90, 90)
@@ -39,7 +42,7 @@ class Weather(BaseModel):
 	wgustm = DecimalField(max_digits=6, decimal_places=2, null=True)      # Wind gust in kph
 	wgusti = DecimalField(max_digits=6, decimal_places=2, null=True)      # Wind gust in mph
 	wdird = DecimalField(max_digits=6, decimal_places=2, null=True)       # Wind direction in degrees
-	wdire = CharField(max_length=3, null=True)                            # Wind direction description (i.e., SW, NNE)
+	wdire = CharField(max_length=10, null=True)                           # Wind direction description (i.e., SW, NNE, Variable, etc.)
 	vism = DecimalField(max_digits=6, decimal_places=2, null=True)        # Visibility in Km
 	visi = DecimalField(max_digits=6, decimal_places=2, null=True)        # Visibility in Miles
 	pressurem = DecimalField(max_digits=6, decimal_places=2, null=True)   # Pressure in mBar
@@ -61,7 +64,7 @@ class Weather(BaseModel):
 	metar = CharField(max_length=255, null=True)
 
 	icon = CharField(max_length=255, null=True)   # Short string indicating the current weather
-	time = DateTimeField(formats='%m/%d/%Y %H:%M')
+	time = DateTimeField()
 
 
 # Handles all database operations
@@ -76,59 +79,60 @@ class DB:
 		database.close()
 
 	# Simple utility function to create tables
-	def create_tables(self):
+	def createTables(self):
 		TaxiPickup.create_table()
 		TaxiDropoff.create_table()
 		Weather.create_table()
 
-	# # Get all comments in the date range
-	# # Note: Do manual pagination because MySQL LIMIT's OFFSET parameter is super slow when the offset gets large
-	# def get_comments(self, startDate, endDate, resultsPerPage=10000):
-	# 	adjustedEndDate = endDate - datetime.timedelta(1)
-	# 	numPages = int(Story.select().where((Story.type == 'comment') & (Story.time.between(startDate, adjustedEndDate))).count() / resultsPerPage) + 1
-	# 	lastId = 0
-	# 	for page in xrange(numPages):
-	# 		numNewComments = 0
-	# 		for comment in Story.select().where((Story.id > lastId) & (Story.type == 'comment') & (Story.time.between(startDate, adjustedEndDate))).limit(resultsPerPage):
-	# 			numNewComments += 1
-	# 			yield comment
-	# 		lastId = comment.id
+	# Adds the taxi data to the db
+	def addTaxiPickup(self, pickupDict):
+		pickup = TaxiPickup()
 
-	# 		if numNewComments < resultsPerPage:
-	# 			break
+		pickup.trip_id = pickupDict['ID']
+		pickup.time = datetime.datetime.strptime(pickupDict['DROPOFF_TIME'], '%Y-%m-%d %H:%M:%S')
+		pickup.address = pickupDict['DROPOFF_ADDRESS']
+		pickup.longitude = pickupDict['DROPOFF_LONG']
+		pickup.latitude = pickupDict['DROPOFF_LAT']
 
-	# # Adds the story data to the db
-	# def add_story(self, storyData):
-	# 	story = Story()
+		# Write the new row to the database
+		pickup.save()
 
-	# 	story.id = storyData.get('id')
-	# 	story.kids = storyData.get('kids')
-	# 	story.author = storyData.get('by')
-	# 	story.text = storyData.get('text')
-	# 	story.type = storyData.get('type')
-	# 	story.parent = storyData.get('parent')
-	# 	story.url = storyData.get('url')
-	# 	story.title = storyData.get('title')
-	# 	story.dead = storyData.get('dead')
-	# 	story.deleted = storyData.get('deleted')
-	# 	story.parts = storyData.get('parts')
+	# Adds the taxi data to the db
+	def addTaxiDropoff(self, dropoffDict):
+		dropoff = TaxiDropoff()
 
-	# 	score = storyData.get('score')
-	# 	if isinstance(score, (int, long)):
-	# 		story.score = score
-	# 	else:
-	# 		story.score = 0
+		dropoff.trip_id = dropoffDict['ID']
+		dropoff.time = datetime.datetime.strptime(dropoffDict['DROPOFF_TIME'], '%m/%d/%Y %H:%M')
+		dropoff.address = dropoffDict['DROPOFF_ADDRESS']
+		dropoff.longitude = dropoffDict['DROPOFF_LONG']
+		dropoff.latitude = dropoffDict['DROPOFF_LAT']
 
-	# 	time = storyData.get('time')
-	# 	if time == None:
-	# 		story.time = None
-	# 	else:
-	# 		story.time = datetime.datetime.fromtimestamp(time)
+		# Write the new row to the database
+		dropoff.save()
 
-	# 	# Write the new row to the database
-	# 	story.save(force_insert=True)
+	# Adds the weather data to the db
+	def addWeather(self, weatherDict):
+		weather = Weather()
+
+		# Check if the fields are invalid
+		for field in WEATHER_FIELD_LIST:
+			fieldValue = float(weatherDict[field])
+			if fieldValue == -999 or fieldValue == -9999:
+				fieldValue = None
+			setattr(weather, field, fieldValue)
+
+		weather.icon = weatherDict['icon']
+		weather.conds = weatherDict['conds']
+		weather.metar = weatherDict['metar']
+		weather.wdire = weatherDict['wdire']
+
+		timeDict = weatherDict['date']      # local time, use weatherDict['utcdate'] for UTC
+		weather.time = datetime.datetime(int(timeDict['year']), int(timeDict['mon']), int(timeDict['mday']), int(timeDict['hour']), int(timeDict['min']))
+
+		# Write the new row to the database
+		weather.save()
 
 
 if __name__ == '__main__':
 	with DB() as db:
-		db.create_tables()
+		db.createTables()

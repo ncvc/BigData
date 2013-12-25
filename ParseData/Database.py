@@ -1,6 +1,6 @@
 import datetime
 
-from peewee import MySQLDatabase, Model, CharField, DateTimeField, IntegerField, BooleanField, TextField, DecimalField
+from peewee import MySQLDatabase, Model, CharField, DateTimeField, IntegerField, BooleanField, TextField, DecimalField, fn
 
 database = MySQLDatabase('big_data', host='localhost', port=3306, user='root', passwd='')
 
@@ -84,6 +84,10 @@ class DB:
 		TaxiDropoff.create_table()
 		Weather.create_table()
 
+	# TODO: Use MySQL's Spatial Values to make this more efficient
+	def getNumPickupsNearLocation(self, lat, lon, startTime, endTime):
+		return TaxiPickup.select().where((fn.pow(fn.pow(TaxiPickup.latitude - lat, 2) + fn.pow(TaxiPickup.longitude - lon, 2), 0.5) < 0.00224946357) & TaxiPickup.time.between(startTime, endTime)).count()
+
 	# Adds the taxi data to the db
 	def addTaxiDropoffs(self, dropoffDicts):
 		self.addTaxiDicts(dropoffDicts, 'taxidropoff', self.dropoffDictToSQLString)
@@ -144,4 +148,9 @@ class DB:
 
 if __name__ == '__main__':
 	with DB() as db:
-		db.createTables()
+		print db.getPickupsNearLocation(42.343365, -71.057114)
+		# count = 0
+		# for x in db.getPickupsNearLocation(42.343365, -71.057114):
+		# 	count += 1
+		# 	print x.trip_id
+		# print 'count', count

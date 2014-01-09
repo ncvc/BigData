@@ -86,7 +86,7 @@ class DB:
 
 	# TODO: Use MySQL's Spatial Values to make this more efficient
 	def getNumPickupsNearLocation(self, lat, lon, startTime, endTime):
-		return TaxiPickup.select().where((fn.pow(fn.pow(TaxiPickup.latitude - lat, 2) + fn.pow(TaxiPickup.longitude - lon, 2), 0.5) < 0.00224946357) & TaxiPickup.time.between(startTime, endTime)).count()
+		return int(TaxiPickup.select().where((fn.pow(fn.pow(TaxiPickup.latitude - lat, 2) + fn.pow(TaxiPickup.longitude - lon, 2), 0.5) < 0.00224946357) & TaxiPickup.time.between(startTime, endTime)).count())
 
 	# Adds the taxi data to the db
 	def addTaxiDropoffs(self, dropoffDicts):

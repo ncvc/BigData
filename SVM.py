@@ -43,71 +43,76 @@ def getPointsOfInterest():
 # Inputs are the following:
 #   Day of the week
 #   Current time
-#   Position
 #   Current Weather (TODO)
 #   Number of pickups between 2 and 1 hour before the currentTime
 #   Number of pickups between 3 and 4 hours after the currentTime
-def generateInputs(db, time, latitude, longitude):
+def generateInputVector(db, time):
 	weekday = time.weekday()
 	hour = time.hour
 	# numPickupsBefore = db.getNumPickupsNearLocation(POI['LAT'], POI['LONG'], time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
 	# numPickupsAfter = db.getNumPickupsNearLocation(POI['LAT'], POI['LONG'], time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
-	return [weekday, hour, latitude, longitude]
+	return [weekday, hour]
 
 # Returns an x, y tuple representing the input and output
 #
 # Outputs are the number of pickups between currentTime and 2 hours from currentTime
 # TODO: Don't train on removed times
-def loadData(startTime=START_TIME, endTime=END_TIME):
+def loadData(latitude, longitude, startTime=START_TIME, endTime=END_TIME):
 	inputs = []
 	outputs = []
-	POIs = getPointsOfInterest()
 	currentTime = startTime
 	with DB() as db:
 		while currentTime < endTime:
-			print float(currentTime.toordinal() - startTime.toordinal()) / (endTime.toordinal() - startTime.toordinal())
-			for POI in POIs:
-				# Populate the inputs
-				inputs.append(generateInputs(db, currentTime, POI['LAT'], POI['LONG']))
+			# print float(currentTime.toordinal() - startTime.toordinal()) / (endTime.toordinal() - startTime.toordinal())
+			# Populate the inputs
+			inputs.append(generateInputVector(db, currentTime))
 
-				# Calculate the number of pickups for the current hour
-				numPickups = db.getNumPickupsNearLocation(POI['LAT'], POI['LONG'], currentTime, currentTime + datetime.timedelta(hours=2))
-				outputs.append(numPickups)
+			# Calculate the number of pickups for the current hour
+			numPickups = db.getNumPickupsNearLocation(latitude, longitude, currentTime, currentTime + datetime.timedelta(hours=2))
+			outputs.append(numPickups)
+
 			currentTime += datetime.timedelta(hours=1)
 	return inputs, outputs
 
-def generateSVM():
+def generateSVM(latitude, longitude):
 	print 'Loading Data'
-	x, y = loadData()
+	x, y = loadData(latitude, longitude)
 
 	print 'Scaling Data'
 	scaler = preprocessing.StandardScaler().fit(x)
-	clf = svm.SVR(kernel='rbf')
+	clf = svm.SVR(kernel='rbf', C=1e3, gamma=0.1)
 
 	svmPipeline = Pipeline([('scaler', scaler), ('svr', clf)])
-	print 'Training SVR'
-	time.clock()
+	print 'Training SVR', x, y
+	start = time.clock()
 	svmPipeline.fit(x, y)
-	print 'Total Training time:', time.clock()
+	print 'Total Training time:', time.clock() - start
 	return svmPipeline
 
-def predict(svmPipeline, outputFilename=OUTPUT_FILENAME):
+def predict(svmPipeline, latitude, longitude):
 	print 'Begin Prediction'
 
 	print 'Loading Test Dataset'
 	testDataset = loadTestDataset()
 	with DB() as db:
-		inputs = [generateInputs(db, sample['start'], sample['lat'], sample['long']) for sample in testDataset]
-	print 'Predicting'
-	predictions = svmPipeline.predict(inputs)
+		inputVectors = {sample['id']: generateInputVector(db, sample['start']) for sample in testDataset if sample['lat'] == latitude and sample['long'] == longitude}
+	print 'Predicting', inputVectors
+	try:
+		predictions = svmPipeline.predict(inputVectors.values())
+	except ValueError:
+		predictions = [0] * len(inputVectors)
 
-	print 'Writing output'
-	with open(outputFilename, 'w') as f:
-		for sample, prediction in zip(testDataset, predictions):
-			locId = sample['id']
-			f.write('%i %i\n' % (locId, prediction))
+	return zip(inputVectors.keys(), predictions)
 
 
 if __name__ == '__main__':
-	svmPipeline = generateSVM()
-	predict(svmPipeline)
+	predictions = []
+	for POI in getPointsOfInterest():
+		print 'POI', POI
+		svmPipeline = generateSVM(POI['LAT'], POI['LONG'])
+		predictions.extend(predict(svmPipeline, POI['LAT'], POI['LONG']))
+
+	print 'Writing output'
+	with open(OUTPUT_FILENAME, 'w') as f:
+		for locID, prediction in predictions:
+			f.write('%i %i\n' % (locID, prediction))

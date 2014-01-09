@@ -1,15 +1,17 @@
 import csv
 import datetime
 import time
+import os
 
 from sklearn import svm, preprocessing
 from sklearn.pipeline import Pipeline
 
 from ParseData.Database import DB
+from ParseData.Config import DATA_FOLDER
 
 
-TEST_DATASET_FILENAME = 'C:\\Users\\nvcar_000\\Desktop\\Big Data Challenge\\test1.txt'
-POINTS_OF_INTEREST_FILENAME = 'C:\\Users\\nvcar_000\\Desktop\\Big Data Challenge\\interestpoints.csv'
+TEST_DATASET_FILENAME = os.path.join(DATA_FOLDER, 'test1.txt')
+POINTS_OF_INTEREST_FILENAME = os.path.join(DATA_FOLDER, 'interestpoints.csv')
 OUTPUT_FILENAME = 'out.txt'
 
 START_TIME = datetime.datetime(2012, 5, 1)
@@ -83,7 +85,7 @@ def generateSVM(latitude, longitude):
 	clf = svm.SVR(kernel='rbf', C=1e3, gamma=0.1)
 
 	svmPipeline = Pipeline([('scaler', scaler), ('svr', clf)])
-	print 'Training SVR', x, y
+	print 'Training SVR'
 	start = time.clock()
 	svmPipeline.fit(x, y)
 	print 'Total Training time:', time.clock() - start
@@ -107,11 +109,13 @@ def predict(svmPipeline, latitude, longitude):
 
 if __name__ == '__main__':
 	predictions = []
+	start = time.clock()
 	for POI in getPointsOfInterest():
 		print 'POI', POI
 		svmPipeline = generateSVM(POI['LAT'], POI['LONG'])
 		predictions.extend(predict(svmPipeline, POI['LAT'], POI['LONG']))
 
+	print 'All predictions took %s seconds' % (time.clock() - start)
 	print 'Writing output'
 	with open(OUTPUT_FILENAME, 'w') as f:
 		for locID, prediction in predictions:

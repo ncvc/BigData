@@ -1,4 +1,5 @@
 import datetime
+import cPickle as pickle
 
 from peewee import MySQLDatabase, Model, CharField, DateTimeField, IntegerField, BooleanField, TextField, DecimalField, fn
 
@@ -6,6 +7,7 @@ database = MySQLDatabase('big_data', host='localhost', port=3306, user='root', p
 
 WEATHER_FIELD_LIST = ['heatindexm', 'windchillm', 'wdird', 'windchilli', 'hail', 'heatindexi', 'wgusti', 'thunder', 'pressurei', 'snow', 'pressurem', 'fog', 'vism', 'wgustm', 'tornado', 'hum', 'tempi', 'tempm', 'dewptm', 'rain', 'dewpti', 'precipm', 'wspdi', 'wspdm', 'visi']
 
+PICKUPS_CACHE_FILENAME = 'pickups_cache.p'
 
 # Database must use utf8mb4 for smileys and other such nonesense
 # ALTER DATABASE hn CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
@@ -72,12 +74,24 @@ class DB:
 	def __enter__(self):
 		database.connect()
 		database.execute_sql('SET NAMES utf8mb4;')  # Necessary for some emojis
+		self.pickupsCache = None
 		return self
 
 	def __exit__(self, type, value, traceback):
+		self.savePickupsCache()
 		print 'DB.__exit__', type, value, traceback
 		database.close()
 
+	def savePickupsCache(self):
+		if self.pickupsCache != None:
+			pickle.dump(self.pickupsCache, open(PICKUPS_CACHE_FILENAME, 'wb'))
+
+	def loadPickupsCache(self):
+		try:
+			self.pickupsCache = pickle.load(open(PICKUPS_CACHE_FILENAME, 'rb'))
+		except IOError:
+			self.pickupsCache = {}
+		
 	# Simple utility function to create tables
 	def createTables(self):
 		TaxiPickup.create_table()
@@ -86,7 +100,15 @@ class DB:
 
 	# TODO: Use MySQL's Spatial Values to make this more efficient
 	def getNumPickupsNearLocation(self, lat, lon, startTime, endTime):
-		return int(TaxiPickup.select().where((fn.pow(fn.pow(TaxiPickup.latitude - lat, 2) + fn.pow(TaxiPickup.longitude - lon, 2), 0.5) < 0.00224946357) & TaxiPickup.time.between(startTime, endTime)).count())
+		if self.pickupsCache == None:
+			self.loadPickupsCache()
+
+		key = (lat, lon, startTime, endTime)
+		if key not in self.pickupsCache:
+			result = int(TaxiPickup.select().where((fn.pow(fn.pow(TaxiPickup.latitude - lat, 2) + fn.pow(TaxiPickup.longitude - lon, 2), 0.5) < 0.00224946357) & TaxiPickup.time.between(startTime, endTime)).count())
+			self.pickupsCache[key] = result
+
+		return self.pickupsCache[key]
 
 	# Adds the taxi data to the db
 	def addTaxiDropoffs(self, dropoffDicts):

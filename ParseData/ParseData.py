@@ -3,9 +3,9 @@ import os
 import json
 
 from Database import DB
+from Config import DATA_FOLDER
 
 
-DATA_FOLDER = 'C:\\Users\\nvcar_000\\Desktop\\Big Data Challenge'
 PICKUPS_FILENAME = os.path.join(DATA_FOLDER, 'pickups_train.csv')
 DROPOFFS_FILENAME = os.path.join(DATA_FOLDER, 'dropoffs.csv')
 WEATHER_FILENAME = os.path.join(DATA_FOLDER, 'wunderground.json')
@@ -32,5 +32,5 @@ def parseWeather(db):
 if __name__ == '__main__':
 	with DB() as db:
 		# parseWeather(db)
-		parsePickups(db)
+		# parsePickups(db)
 		parseDropoffs(db)

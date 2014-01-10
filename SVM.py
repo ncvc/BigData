@@ -51,6 +51,7 @@ def getPointsOfInterest():
 def generateInputVector(db, time):
 	weekday = time.weekday()
 	hour = time.hour
+	weather = db.getWeather(time)
 	# numPickupsBefore = db.getNumPickupsNearLocation(POI['LAT'], POI['LONG'], time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
 	# numPickupsAfter = db.getNumPickupsNearLocation(POI['LAT'], POI['LONG'], time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
 	return [weekday, hour]

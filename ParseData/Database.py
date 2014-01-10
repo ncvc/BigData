@@ -167,6 +167,10 @@ class DB:
 		# Write the new row to the database
 		weather.save()
 
+	def getWeather(self, time):
+		halfAnHour = datetime.timedelta(30 MINUTES!)
+		return Weather.select().where(Weather.time.between(time - halfAnHour, time + halfAnHour))
+
 
 if __name__ == '__main__':
 	with DB() as db:

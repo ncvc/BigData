@@ -168,8 +168,8 @@ class DB:
 		weather.save()
 
 	def getWeather(self, time):
-		halfAnHour = datetime.timedelta(30 MINUTES!)
-		return Weather.select().where(Weather.time.between(time - halfAnHour, time + halfAnHour))
+		halfAnHour = datetime.timedelta(hours=10)
+		return Weather.select().where(Weather.time.between(time - halfAnHour, time + halfAnHour)).order_by(fn.ABS(fn.TIMEDIFF(Weather.time, time)).asc()).limit(1).get()
 
 
 if __name__ == '__main__':

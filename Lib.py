@@ -76,3 +76,97 @@ def loadData(db, latitude, longitude, generateX, startTime=START_TIME, endTime=E
 	return inputs, outputs
 
 REMOVED_TIMES = getRemovedTimes()
+
+
+# Convenience method for populating inputs
+# Inputs are the following:
+#   Day of the week
+#   Current time
+#   Current Weather (tempi, precipm, hum, wspdi, windchilli, heatindexi, conds, fog, rain, snow, hail, thunder, tornado)
+#   Number of pickups between 2 and 1 hour before the currentTime
+#   Number of pickups between 3 and 4 hours after the currentTime
+# TODO:
+#   - Mixture Model?
+#   - Use conds instead of rain
+#   - Use different models for each of fog, rain, snow, etc.
+def generateAllFeatures(db, latitude, longitude, time):
+	# Day of the week and time of day
+	timeFeatures = [time.weekday(), time.hour]
+	
+	# Weather
+	weather = db.getWeather(time)
+	precip = weather.precipm
+	if precip == None:
+		precip = 0.0
+	windchill = weather.windchilli
+	if windchill == None:
+		windchill = 0.0
+	heatindex = weather.heatindexi
+	if heatindex == None:
+		heatindex = 0.0
+	# Not weather.conds
+	weatherFeatures = [weather.tempi, precip, weather.hum, weather.wspdi, windchill, heatindex, weather.fog, weather.rain, weather.snow, weather.thunder]
+
+	# Events
+	afterNumEvents = [db.afterNumEvents(latitude, longitude, time, i) for i in xrange(4)]
+	duringNumEvents = [db.duringNumEvents(latitude, longitude, time - datetime.timedelta(hours=i)) for i in xrange(-4, 4)]
+
+	eventFeatures = afterNumEvents + duringNumEvents
+
+	# Pickups near the given timeframe
+	numPickupsBefore = db.getNumPickupsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
+	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
+	pickupFeatures = [numPickupsBefore, numPickupsAfter]
+
+	# Generate the vector
+	inputVector = tuple(timeFeatures + weatherFeatures + pickupFeatures + eventFeatures)
+	if any(inp == None for inp in inputVector):
+		print 'Some input is None:', inputVector
+	return inputVector
+
+
+# Convenience method for populating inputs
+# Inputs are the following:
+#   Day of the week
+#   Current time
+#   Current Weather (tempi, precipm, hum, wspdi, windchilli, heatindexi, conds, fog, rain, snow, hail, thunder, tornado)
+#   Number of pickups between 2 and 1 hour before the currentTime
+#   Number of pickups between 3 and 4 hours after the currentTime
+# TODO:
+#   - Mixture Model?
+#   - Use conds instead of rain
+#   - Use different models for each of fog, rain, snow, etc.
+def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
+	# Day of the week and time of day
+	timeFeatures = [time.weekday(), time.hour]
+	
+	# Weather
+	# weather = db.getWeather(time)
+	# precip = weather.precipm
+	# if precip == None:
+	# 	precip = 0.0
+	# windchill = weather.windchilli
+	# if windchill == None:
+	# 	windchill = 0.0
+	# heatindex = weather.heatindexi
+	# if heatindex == None:
+	# 	heatindex = 0.0
+	# # Not weather.conds
+	# weatherFeatures = [weather.tempi, precip, weather.hum, weather.wspdi, windchill, heatindex, weather.fog, weather.rain, weather.snow, weather.thunder]
+
+	# Events
+	afterNumEvents = [db.afterNumEvents(latitude, longitude, time, i) for i in xrange(4)]
+	duringNumEvents = [db.duringNumEvents(latitude, longitude, time - datetime.timedelta(hours=i)) for i in xrange(-4, 4)]
+
+	eventFeatures = afterNumEvents + duringNumEvents
+
+	# Pickups near the given timeframe
+	numPickupsBefore = db.getNumPickupsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
+	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
+	pickupFeatures = [numPickupsBefore, numPickupsAfter]
+
+	# Generate the vector
+	inputVector = tuple(timeFeatures + pickupFeatures + eventFeatures)
+	if any(inp == None for inp in inputVector):
+		print 'Some input is None:', inputVector
+	return inputVector

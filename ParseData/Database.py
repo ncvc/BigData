@@ -1,7 +1,10 @@
 import datetime
+import time
 import cPickle as pickle
+from HTMLParser import HTMLParser
 
-from peewee import MySQLDatabase, Model, CharField, DateTimeField, IntegerField, BooleanField, TextField, DecimalField, fn
+from peewee import MySQLDatabase, Model, fn
+from peewee import CharField, DateTimeField, DateField, IntegerField, BooleanField, TextField, DecimalField, BigIntegerField
 
 database = MySQLDatabase('big_data', host='localhost', port=3306, user='root', passwd='')
 
@@ -20,14 +23,14 @@ class BaseModel(Model):
 
 class TaxiPickup(BaseModel):
 	trip_id = IntegerField()
-	time = DateTimeField()
+	time = DateTimeField(index=True)
 	address = TextField()
 	longitude = DecimalField(max_digits=9, decimal_places=6)  # Range: (-180, 180)
 	latitude = DecimalField(max_digits=9, decimal_places=6)   # Range: (-90, 90)
 
 class TaxiDropoff(BaseModel):
 	trip_id = IntegerField()
-	time = DateTimeField()
+	time = DateTimeField(index=True)
 	address = TextField()
 	longitude = DecimalField(max_digits=9, decimal_places=6)  # Range: (-180, 180)
 	latitude = DecimalField(max_digits=9, decimal_places=6)   # Range: (-90, 90)
@@ -66,21 +69,71 @@ class Weather(BaseModel):
 	metar = CharField(max_length=255, null=True)
 
 	icon = CharField(max_length=255, null=True)   # Short string indicating the current weather
-	time = DateTimeField()
+	time = DateTimeField(index=True)
 
 class Event(BaseModel):
 	event_id = IntegerField()
 	name = TextField()
-	start_time = DateTimeField()
-	end_time = DateTimeField()
+	start_time = DateTimeField(index=True)
+	end_time = DateTimeField(index=True)
 	address = TextField()
 	longitude = DecimalField(max_digits=9, decimal_places=6)  # Range: (-180, 180)
 	latitude = DecimalField(max_digits=9, decimal_places=6)   # Range: (-90, 90)
 	type = TextField()
 	description = TextField(null=True)
 
-	is_time_accurate = BooleanField()
-	is_time_inferred = BooleanField()
+	is_time_accurate = BooleanField(index=True)
+	is_time_inferred = BooleanField(index=True)
+
+# Should be ~400 bytes max
+class Tweet(BaseModel):
+	text = CharField(max_length=255, null=True)
+	longitude = DecimalField(max_digits=9, decimal_places=6, null=True)  # Range: (-180, 180)
+	latitude = DecimalField(max_digits=9, decimal_places=6, null=True)   # Range: (-90, 90)
+	created_at = DateTimeField(formats='%Y-%m-%d %H:%M:%S', null=True, index=True)
+	#TODO: entities
+	favorited = BooleanField(null=True)
+	tweet_id = BigIntegerField(null=True)
+	place_id = CharField(max_length=255, null=True)
+	retweet_count = IntegerField(null=True)
+	source = CharField(max_length=255, null=True)
+	user_id = BigIntegerField(null=True)
+
+	mentions_taxi = BooleanField(index=True)
+
+class TRide(BaseModel):
+	ticket_type = CharField(max_length=255)
+	origin = CharField(max_length=50, index=True)
+	destination = CharField(max_length=50, index=True)
+	trips = IntegerField()
+	date = DateField(formats='%Y-%m-%d', index=True)
+	datetime = DateTimeField(formats='%Y-%m-%d %H:%M:%S.000', index=True)
+	next_trip_date = DateTimeField(formats='%Y-%m-%d %H:%M:%S.000', index=True)
+
+class BusRide(BaseModel):
+	device_id = IntegerField()
+	ticket_type = CharField(max_length=255)
+	device_class_id = IntegerField()
+	date = DateField(formats='%Y-%m-%d', index=True)
+	datetime = DateTimeField(formats='%Y-%m-%d %H:%M:%S.000', index=True)
+	route_station = CharField(max_length=50, index=True)
+
+class Stop(BaseModel):
+	loc_id = IntegerField()
+	is_station = BooleanField()
+	direction = CharField(max_length=255)
+	next_loc_id = IntegerField()
+	notes = TextField()
+	longitude = DecimalField(max_digits=9, decimal_places=6)  # Range: (-180, 180)
+	latitude = DecimalField(max_digits=9, decimal_places=6)   # Range: (-90, 90)
+	next_station = IntegerField()
+	prev_station = IntegerField()
+	station = CharField(max_length=50, index=True)
+	sort_order = DecimalField(max_digits=4, decimal_places=2)   # Range: (-90, 90)
+	line = CharField(max_length=10)
+	circuit_number = CharField(max_length=30)
+	heading = IntegerField()
+	loc_type = CharField(max_length=30)
 
 
 # Decorator to cache database queries
@@ -126,14 +179,26 @@ class DB:
 		TaxiDropoff.create_table(fail_silently=True)
 		Weather.create_table(fail_silently=True)
 		Event.create_table(fail_silently=True)
+		Tweet.create_table(fail_silently=True)
+		TRide.create_table(fail_silently=True)
+		BusRide.create_table(fail_silently=True)
+		Stop.create_table(fail_silently=True)
+
+	def getDist(self, lat, lon, obj):
+		return fn.pow(fn.pow(obj.latitude - lat, 2) + fn.pow(obj.longitude - lon, 2), 0.5)
 
 	def isClose(self, lat, lon, obj, dist):
-		return fn.pow(fn.pow(obj.latitude - lat, 2) + fn.pow(obj.longitude - lon, 2), 0.5) < dist
+		return self.getDist(lat, lon, obj) < dist
 
 	# TODO: Use MySQL's Spatial Values to make this more efficient
 	@cached
 	def getNumPickupsNearLocation(self, lat, lon, startTime, endTime):
 		return int(TaxiPickup.select().where(self.isClose(lat, lon, TaxiPickup, 0.00224946357) & TaxiPickup.time.between(startTime, endTime)).count())
+
+	# TODO: Use MySQL's Spatial Values to make this more efficient
+	@cached
+	def getNumDropoffsNearLocation(self, lat, lon, startTime, endTime):
+		return int(TaxiDropoff.select().where(self.isClose(lat, lon, TaxiDropoff, 0.00224946357) & TaxiDropoff.time.between(startTime, endTime)).count())
 
 	# Adds the taxi data to the db
 	def addTaxiDropoffs(self, dropoffDicts):
@@ -211,9 +276,7 @@ class DB:
 		isPM = int(timeStrList.pop(0))
 		hour += 12 * isPM
 
-		time = datetime.time(hour, minute)
-
-		return date, time
+		return date, datetime.time(hour, minute)
 
 	def metersToCoordDist(self, distInMeters):
 		# 0.00224946357 = 250 meters
@@ -241,18 +304,18 @@ class DB:
 		isAccurate = True
 		isInferred = False
 		for timeField in ('start_time', 'end_time'):
-			date, time = self.parseTimeStr(timeStrList)
+			eventDate, eventTime = self.parseTimeStr(timeStrList)
 
-			# If no explicit time is given, try to infer it from the description
-			if time == None:
+			# If no explicit eventTime is given, try to infer it from the description
+			if eventTime == None:
 				isAccurate = False
-				time = self.inferTime(eventDict['description'])
-				if time == None:
-					time = datetime.time()
+				eventTime = self.inferTime(eventDict['description'])
+				if eventTime == None:
+					eventTime = datetime.time()
 				else:
 					isInferred = True
 
-			eventDict[timeField] = datetime.datetime.combine(date, time).strftime('%Y-%m-%d %H:%M:%S')
+			eventDict[timeField] = datetime.datetime.combine(eventDate, eventTime).strftime('%Y-%m-%d %H:%M:%S')
 
 		eventDict['is_time_accurate'] = isAccurate
 		eventDict['is_time_inferred'] = isInferred
@@ -279,28 +342,172 @@ class DB:
 
 			index += insertsPerQuery
 
-	def addEvent(self, eventDict):
-		event = Event()
+	def tweetDictToSQLStrings(self, tweetDict):
+		html_parser = HTMLParser()
+		SQLDict = {}
 
-		event.event_id = eventDict['id']
-		event.name = eventDict['name']
-		event.address = eventDict['address']
-		event.longitude = eventDict['long']
-		event.latitude = eventDict['lat']
-		event.type = eventDict['type']
+		# Populate the tweetDict. Use the get method to ensure no KeyErrors are raised
+		text = tweetDict.get('text')
+		if text == None:
+			SQLDict['text'] = None
+			SQLDict['mentions_taxi'] = False
+		else:
+			SQLDict['text'] = html_parser.unescape(text)
+			text = SQLDict['text'].lower()
+			SQLDict['mentions_taxi'] = 'taxi' in text or 'cab' in text
 
-		description = eventDict['description']
-		if description == 'null':
-			description = None
-		event.description = description
+		coords = tweetDict.get('coordinates')
+		if coords == None or coords == 'None':
+			SQLDict['longitude'] = None
+			SQLDict['latitude'] = None
+		else:
+			SQLDict['longitude'] = coords.get('coordinates')[0]
+			SQLDict['latitude'] = coords.get('coordinates')[1]
 
-		# Try to parse the (inconsistently formatted) time string
-		timeStrList = [item for item in eventDict['time'].split(' ') if item != '']
+		created_at = tweetDict.get('created_at')
+		if created_at == None:
+			SQLDict['created_at'] = None
+		else:
+			t = time.strptime(created_at.replace('+0000', ''), '%a %b %d %H:%M:%S %Y')
+			SQLDict['created_at'] = time.strftime('%Y-%m-%d %H:%M:%S', t)
 
-		event.start_time = self.parseTimeStr(timeStrList)
-		event.end_time = self.parseTimeStr(timeStrList)
+		SQLDict['favorited'] = tweetDict.get('favorited')
 
-		# event.save()
+		SQLDict['tweet_id'] = tweetDict.get('id')
+
+		place = tweetDict.get('place')
+		if place == None or place == 'None':
+			SQLDict['place_id'] = None
+		else:
+			SQLDict['place_id'] = place.get('id')
+
+		SQLDict['retweet_count'] = tweetDict.get('retweet_count')
+
+		SQLDict['source'] = tweetDict.get('source')
+
+		user = tweetDict.get('user')
+		if user == None:
+			SQLDict['user_id'] = None
+		else:
+			SQLDict['user_id'] = user.get('id')
+
+		return SQLDict
+
+	# Adds the tweet data to the db
+	def addTweets(self, tweetDicts):
+		# Paginate so the queries don't get too long
+		index = 0
+		insertsPerQuery = 10000
+		tweetStrings = [0] * insertsPerQuery
+		while len(tweetStrings) == insertsPerQuery:
+			tweetStrings = [self.tweetDictToSQLStrings(tweetDict) for tweetDict in (tweetDicts.next() for i in xrange(insertsPerQuery))]
+			fields = tweetStrings[0].keys()
+			flattenedTweetStrings = [sqlStrings[field] for sqlStrings in tweetStrings for field in fields]
+
+			toReplace = ','.join(['(%s)' % (','.join(['%s'] * len(fields)))] * (len(flattenedTweetStrings) / len(fields)))
+			
+			database.execute_sql('INSERT INTO %s (%s) VALUES %s' % ('tweet', ','.join(fields), toReplace), flattenedTweetStrings)
+
+			index += insertsPerQuery
+
+	def addDicts(self, table, dicts, dictToSQLString):
+		# Paginate so the queries don't get too long
+		index = 0
+		insertsPerQuery = 10000
+		dictStrings = [0] * insertsPerQuery
+		while len(dictStrings) == insertsPerQuery:
+			dictStrings = [dictToSQLString(objectDicts) for objectDicts in (dicts.next() for i in xrange(insertsPerQuery))]
+			fields = dictStrings[0].keys()
+			flattenedDictStrings = [sqlStrings[field] for sqlStrings in dictStrings for field in fields]
+
+			toReplace = ','.join(['(%s)' % (','.join(['%s'] * len(fields)))] * (len(flattenedDictStrings) / len(fields)))
+
+			database.execute_sql('INSERT INTO %s (%s) VALUES %s' % (table, ','.join(fields), toReplace), flattenedDictStrings)
+
+			index += insertsPerQuery
+
+	def busDictToSQLStrings(self, TDict):
+		SQLDict = {}
+
+		# SQLDict['device_id'] = TDict['DEVICEID']
+		# SQLDict['ticket_type'] = TDict['TICKETTYPE']
+		# SQLDict['device_class_id'] = TDict['DEVICECLASSID']
+		SQLDict['date'] = TDict['ScheduleDate']
+		SQLDict['datetime'] = TDict['CREATEDATE'][:-4]
+		SQLDict['route_station'] = TDict['RouteStation']
+
+		return SQLDict
+
+	def TDictToSQLStrings(self, TDict):
+		SQLDict = {}
+
+		# SQLDict['ticket_type'] = TDict['TicketTypeName']
+		SQLDict['origin'] = TDict['Origin']
+		SQLDict['destination'] = TDict['Destination']
+		# SQLDict['trips'] = TDict['Trips']
+
+		try:
+			SQLDict['date'] = TDict['ScheduleDate']
+			SQLDict['datetime'] = TDict['EntryDateTime']
+			# SQLDict['next_trip_date'] = TDict['NextTripDateTime'][:-4]
+		except KeyError:
+			SQLDict['date'] = TDict['OrderDate']
+			SQLDict['datetime'] = TDict['CreateDate'][:-4]
+			# SQLDict['next_trip_date'] = TDict['NextTripDate'][:-4]
+			
+		return SQLDict
+
+	def stopDictToSQLStrings(self, TDict):
+		SQLDict = {}
+
+		SQLDict['loc_id'] = TDict['locID']
+		SQLDict['is_station'] = TDict['isStation']
+		SQLDict['direction'] = TDict['Direction']
+		SQLDict['next_loc_id'] = TDict['nextLocID']
+		SQLDict['notes'] = TDict['Notes']
+		SQLDict['longitude'] = TDict['Longitude']
+		SQLDict['latitude'] = TDict['Latitude']
+		SQLDict['next_station'] = TDict['nextStn']
+		SQLDict['prev_station'] = TDict['prevStn']
+		SQLDict['station'] = TDict['Station']
+		SQLDict['sort_order'] = TDict['SortOrder']
+		SQLDict['line'] = TDict['Line']
+		SQLDict['circuit_number'] = TDict['CircuitNumber']
+		SQLDict['heading'] = TDict['Heading']
+		SQLDict['loc_type'] = TDict['LocType']
+			
+		return SQLDict
+
+	# Adds the bus ride data to the db
+	def addTRides(self, TDicts):
+		self.addDicts('tride', TDicts, self.TDictToSQLStrings)
+
+	# Adds the bus ride data to the db
+	def addBusRides(self, busDicts):
+		self.addDicts('busride', busDicts, self.busDictToSQLStrings)
+
+	def addStops(self, stopDicts):
+		self.addDicts('stop', stopDicts, self.stopDictToSQLStrings)
+
+	@cached
+	def getXClosestStations(self, latitude, longitude, x, isStation):
+		return [stop.station for stop in Stop.select().where(Stop.is_station == isStation).order_by(self.getDist(self, latitude, longitude, Stop).asc()).limit(x)]
+
+	@cached
+	def getNumTRidesFromStation(self, station, startTime, endTime):
+		return TRide.select().where(TRide.origin == station & TRide.datetime.between(startTime, endTime)).count()
+
+	@cached
+	def getNumTRidesToStation(self, station, startTime, endTime):
+		return TRide.select().where(TRide.destination == station & TRide.datetime.between(startTime, endTime)).count()
+
+	@cached
+	def getNumTRidesFromXClosestStations(self, latitude, longitude, startTime, endTime, x):
+		return sum(self.getNumTRidesFromStation(self, station, startTime, endTime) for station in self.getXClosestStations(latitude, longitude, x, True))
+
+	@cached
+	def getNumTRidesToXClosestStations(self, latitude, longitude, startTime, endTime, x):
+		return sum(self.getNumTRidesToStation(self, station, startTime, endTime) for station in self.getXClosestStations(latitude, longitude, x, True))
 
 
 if __name__ == '__main__':

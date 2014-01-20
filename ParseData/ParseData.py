@@ -11,6 +11,10 @@ PICKUPS_FILENAME = os.path.join(DATA_FOLDER, 'pickups_train.csv')
 DROPOFFS_FILENAME = os.path.join(DATA_FOLDER, 'dropoffs.csv')
 WEATHER_FILENAME = os.path.join(DATA_FOLDER, 'wunderground.json')
 EVENTS_FILENAME = os.path.join(DATA_FOLDER, 'events.csv')
+TWEETS_FILENAMES = [os.path.join(DATA_FOLDER, '2012_%02i.json' % month) for month in xrange(4, 13)]
+BUS_FILENAMES = [os.path.join(DATA_FOLDER, 'mbta', 'AFC_%s2012.rpt' % month) for month in ('May', 'June')]
+T_FILENAMES = [os.path.join(DATA_FOLDER, 'mbta', 'ODRail_%s2012.rpt' % month) for month in ('May', 'June')]
+STOPS_FILENAME = os.path.join(DATA_FOLDER, 'mbta', 'Stops.rpt')
 
 
 def parsePickups(db):
@@ -53,12 +57,85 @@ def parseEvents(db):
 
 		db.addEvents(events)
 
+def parseTweets(db):
+	print 'Parsing Tweets'
+	for tweetFilename in TWEETS_FILENAMES:
+		print 'Parsing %s' % tweetFilename
+		with open(tweetFilename) as f:
+			tweets = (json.loads(line.strip()) for line in f if line != '\n')
+			db.addTweets(tweets)
+
+def parseLine(fieldIndices, line):
+	parsedLine = []
+	lastIndex = 0
+	for fieldIndex in fieldIndices[1:] + [len(line)]:
+		parsedLine.append(line[lastIndex:fieldIndex].strip())
+		lastIndex = fieldIndex
+
+	return parsedLine
+
+def parseTRides(db):
+	print 'Parsing T Rides'
+	for TFilename in T_FILENAMES:
+		print 'Parsing %s' % TFilename
+		with open(TFilename) as f:
+			header = f.readline()[3:]
+			separator = f.readline()
+
+			# Find the length of each field by parsing the separator line
+			fieldIndices = []
+			index = 0
+			while index != -1:
+				fieldIndices.append(index+1)
+				index = separator.find(' ', index+1)
+
+			fieldNames = parseLine(fieldIndices, header)
+
+			TRides = (dict(zip(fieldNames, parseLine(fieldIndices, line))) for line in f)
+			db.addTRides(TRides)
+
+def parseBusRides(db):
+	print 'Parsing Bus Rides'
+	for busFilename in BUS_FILENAMES:
+		print 'Parsing %s' % busFilename
+		with open(busFilename) as f:
+			header = f.readline()[3:]
+			separator = f.readline()
+
+			# Find the length of each field by parsing the separator line
+			fieldIndices = []
+			index = 0
+			while index != -1:
+				fieldIndices.append(index+1)
+				index = separator.find(' ', index+1)
+
+			fieldNames = parseLine(fieldIndices, header)
+
+			busRides = (dict(zip(fieldNames, parseLine(fieldIndices, line))) for line in f)
+			db.addBusRides(busRides)
+
+def parseStops(db):
+	print 'Parsing Stops'
+	with open(STOPS_FILENAME) as f:
+		header = f.readline()[3:]
+		separator = f.readline()
+
+		# Find the length of each field by parsing the separator line
+		fieldIndices = []
+		index = 0
+		while index != -1:
+			fieldIndices.append(index+1)
+			index = separator.find(' ', index+1)
+
+		fieldNames = parseLine(fieldIndices, header)
+
+		stops = (dict(zip(fieldNames, parseLine(fieldIndices, line))) for line in f)
+		db.addStops(stops)
 
 if __name__ == '__main__':
 	start = time.clock()
+
 	with DB() as db:
-		# parseWeather(db)
-		# parsePickups(db)
-		# parseDropoffs(db)
-		parseEvents(db)
+		parseStops(db)
+
 	print 'Total time:', time.clock() - start

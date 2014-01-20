@@ -116,7 +116,11 @@ def generateAllFeatures(db, latitude, longitude, time):
 	# Pickups near the given timeframe
 	numPickupsBefore = db.getNumPickupsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
 	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
-	pickupFeatures = [numPickupsBefore, numPickupsAfter]
+
+	numDropoffsBefore = db.getNumDropoffsNearLocation(latitude, longitude, time - datetime.timedelta(hours=1), time)
+	numDropoffsDuring = db.getNumDropoffsNearLocation(latitude, longitude, time, time + datetime.timedelta(hours=1))
+	numDropoffsAfter = db.getNumDropoffsNearLocation(latitude, longitude, time + datetime.timedelta(hours=1), time + datetime.timedelta(hours=2))
+	pickupFeatures = [numPickupsBefore, numPickupsAfter, numDropoffsBefore, numDropoffsDuring, numDropoffsAfter]
 
 	# Generate the vector
 	inputVector = tuple(timeFeatures + weatherFeatures + pickupFeatures + eventFeatures)
@@ -165,8 +169,18 @@ def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
 	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
 	pickupFeatures = [numPickupsBefore, numPickupsAfter]
 
+	# T Rides
+	numTRides1 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 1) for hours in xrange(-2,3)]
+	numTRides2 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 2) for hours in xrange(-2,3)]
+	numTRides3 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 3) for hours in xrange(-2,3)]
+	numTRides4 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 4) for hours in xrange(-2,3)]
+	TFeatures = numTRides1 + numTRides2 + numTRides3 + numTRides4
+
+	# Bus Rides
+
 	# Generate the vector
 	inputVector = tuple(timeFeatures + pickupFeatures + eventFeatures)
+	inputVector = tuple(TFeatures)
 	if any(inp == None for inp in inputVector):
 		print 'Some input is None:', inputVector
 	return inputVector

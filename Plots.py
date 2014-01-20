@@ -78,6 +78,7 @@ def featureSelection():
 		plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=0.5, hspace=0.5)
 		fignum = 1
 		for POI in POIs:
+			print POI
 			x, y = loadData(db, POI['LAT'], POI['LONG'], generateAllFeaturesExceptWeather)
 			x, y = np.array(x), np.array(y)
 

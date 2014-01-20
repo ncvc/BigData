@@ -1,6 +1,7 @@
 import csv
 import os
 import datetime
+import math
 
 from ParseData.Config import DATA_FOLDER
 
@@ -89,9 +90,12 @@ REMOVED_TIMES = getRemovedTimes()
 #   - Mixture Model?
 #   - Use conds instead of rain
 #   - Use different models for each of fog, rain, snow, etc.
+weekdays = [[math.sin(x * 2.0 * math.pi / 7.0), math.cos(x * 2.0 * math.pi / 7.0)] for x in xrange(7)]
+times = [[math.sin(x * 2.0 * math.pi / 24.0), math.cos(x * 2.0 * math.pi / 24.0)] for x in xrange(24)]
 def generateAllFeatures(db, latitude, longitude, time):
 	# Day of the week and time of day
-	timeFeatures = [time.weekday(), time.hour]
+	# timeFeatures = [time.weekday(), time.hour]
+	timeFeatures = weekdays[time.weekday()] + times[time.hour]
 	
 	# Weather
 	weather = db.getWeather(time)
@@ -143,9 +147,10 @@ def generateAllFeatures(db, latitude, longitude, time):
 def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
 	# Day of the week and time of day
 	timeFeatures = [time.weekday(), time.hour]
+	timeFeatures2 = weekdays[time.weekday()] + times[time.hour]
 	
 	# Weather
-	# weather = db.getWeather(time)
+	weather = db.getWeather(time)
 	# precip = weather.precipm
 	# if precip == None:
 	# 	precip = 0.0
@@ -170,17 +175,25 @@ def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
 	pickupFeatures = [numPickupsBefore, numPickupsAfter]
 
 	# T Rides
-	numTRides1 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 1) for hours in xrange(-2,3)]
-	numTRides2 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 2) for hours in xrange(-2,3)]
-	numTRides3 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 3) for hours in xrange(-2,3)]
-	numTRides4 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 4) for hours in xrange(-2,3)]
-	TFeatures = numTRides1 + numTRides2 + numTRides3 + numTRides4
+	# numTRides1 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 1) for hours in xrange(-2,3)]
+	# numTRides2 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 2) for hours in xrange(-2,3)]
+	# numTRides3 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 3) for hours in xrange(-2,3)]
+	# numTRides4 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 4) for hours in xrange(-2,3)]
+	# numTRides1 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 1)
+	# numTRides2 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 2)
+	# numTRides3 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 3)
+	numTRides4 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 4)
+	TFeatures = [numTRides4]
 
-	# Bus Rides
+	# Tweets
+	nearLoc = db.getNumTweetsNearLocation(latitude, longitude, startTime, endTime, distInMeters=250)
+	nearLocMentioningTaxi = db.getNumTweetsNearLocationMentioningTaxi(latitude, longitude, startTime, endTime, distInMeters=250)
+	mentioningTaxi = db.getNumTweetsMentioningTaxi(startTime, endTime)
+	tweetFeatures = [nearLoc, nearLocMentioningTaxi, mentioningTaxi]
 
 	# Generate the vector
 	inputVector = tuple(timeFeatures + pickupFeatures + eventFeatures)
-	inputVector = tuple(TFeatures)
+	inputVector = tuple(timeFeatures + pickupFeatures + TFeatures)
 	if any(inp == None for inp in inputVector):
 		print 'Some input is None:', inputVector
 	return inputVector

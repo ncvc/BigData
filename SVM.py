@@ -1,7 +1,6 @@
-import datetime
 import time
 
-from sklearn import svm, preprocessing
+from sklearn import svm, preprocessing, gaussian_process, neighbors, cross_decomposition, ensemble
 from sklearn.pipeline import Pipeline
 from sklearn.feature_selection import SelectPercentile, f_regression, SelectKBest
 
@@ -12,62 +11,80 @@ from Lib import loadData, loadTestDataset, getPointsOfInterest, generateAllFeatu
 OUTPUT_FILENAME = 'out.txt'
 
 
-# Convenience method for populating inputs
-# Inputs are the following:
-#   Day of the week
-#   Current time
-#   Current Weather (tempi, precipm, hum, wspdi, windchilli, heatindexi, conds, fog, rain, snow, hail, thunder, tornado)
-#   Number of pickups between 2 and 1 hour before the currentTime
-#   Number of pickups between 3 and 4 hours after the currentTime
-# TODO:
-#   - Mixture Model?
-#   - Use conds instead of rain
-#   - Use different models for each of fog, rain, snow, etc.
-def generateInputVector(db, latitude, longitude, time):
-	# Day of the week and time of day
-	weekday = time.weekday()
-	hour = time.hour
-	
-	# Weather
-	weather = db.getWeather(time)
-	precip = weather.rain
-	if precip == None:
-		precip = 0.0
-	# if weather.windchilli != None:
-	# 	temp = weather.windchilli
-	# elif weather.heatindexi != None:
-	# 	temp = weather.heatindexi
-	# else:
-	# temp = weather.tempi
-
-	# Events
-	# afterNumEvents = db.afterNumEvents(latitude, longitude, time, 1)
-
-	# Pickups near the given timeframe
-	numPickupsBefore = db.getNumPickupsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
-	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
-
-	# Generate the vector
-	inputVector = (hour, numPickupsBefore, numPickupsAfter, weekday, weather.rain, weather.snow, weather.thunder)
-	if any(inp == None for inp in inputVector):
-		print 'Some input is None:', inputVector
-	return inputVector
-
-def generateSVM(db, latitude, longitude):
-	print 'Loading Data'
-	x, y = loadData(db, latitude, longitude, generateAllFeatures)
-
-	print 'Scaling Data'
+# Various machine learning methods
+def generateSVMPipeline(x):
 	selector = SelectKBest(f_regression, k=5)
 	scaler = preprocessing.StandardScaler().fit(x)
 	reg = svm.SVR(kernel='rbf', C=1e3, gamma=0.1)
 
-	svmPipeline = Pipeline([('selector', selector), ('scaler', scaler), ('svr', reg)])
+	return Pipeline([('selector', selector), ('scaler', scaler), ('svr', reg)])
+
+def generateGaussianProcessPipeline(x):
+	selector = SelectKBest(f_regression, k=5)
+	scaler = preprocessing.StandardScaler().fit(x)
+	gp = gaussian_process.GaussianProcess()
+
+	return Pipeline([('selector', selector), ('scaler', scaler), ('gp', gp)])
+
+def generateKNearestNeighborsPipeline(x):
+	selector = SelectKBest(f_regression, k=5)
+	scaler = preprocessing.StandardScaler().fit(x)
+	knn = neighbors.KNeighborsRegressor(n_neighbors=5, weights='uniform')
+
+	return Pipeline([('selector', selector), ('scaler', scaler), ('knn', knn)])
+
+def generateRadiusNearestNeighborsPipeline(x):
+	selector = SelectKBest(f_regression, k=5)
+	scaler = preprocessing.StandardScaler().fit(x)
+	rnn = neighbors.RadiusNeighborsRegressor(weights='uniform')
+
+	return Pipeline([('selector', selector), ('scaler', scaler), ('rnn', rnn)])
+
+def generatePLSRegressionPipeline(x):
+	scaler = preprocessing.StandardScaler().fit(x)
+	pls = cross_decomposition.PLSRegression(n_components=2)
+
+	return Pipeline([('scaler', scaler), ('pls', pls)])
+
+def generateRandomForestPipeline(x):
+	scaler = preprocessing.StandardScaler().fit(x)
+	rf = ensemble.RandomForestRegressor(n_estimators=10)
+
+	return Pipeline([('scaler', scaler), ('rf', rf)])
+
+def generateExtraTreesPipeline(x):
+	scaler = preprocessing.StandardScaler().fit(x)
+	et = ensemble.ExtraTreesRegressor(n_estimators=10)
+
+	return Pipeline([('scaler', scaler), ('et', et)])
+
+def generateAdaBoostPipeline(x):
+	scaler = preprocessing.StandardScaler().fit(x)
+	base_estimator = ensemble.DecisionTreeRegressor(max_depth=4)
+	ada = ensemble.AdaBoostRegressor(base_estimator=base_estimator, n_estimators=300)
+
+	return Pipeline([('scaler', scaler), ('ada', ada)])
+
+def generateGradientBoostingPipeline(x):
+	scaler = preprocessing.StandardScaler().fit(x)
+	grb = ensemble.GradientBoostingRegressor()
+
+	return Pipeline([('scaler', scaler), ('grb', grb)])	
+
+
+# Fitting and predicting
+def fitPipeline(db, latitude, longitude, generatePipeline):
+	print 'Loading Data'
+	x, y = loadData(db, latitude, longitude, generateAllFeatures)
+
+	print 'Generating pipeline'
+	pipeline = generatePipeline(x)
+
 	print 'Training SVR'
 	start = time.clock()
-	svmPipeline.fit(x, y)
+	pipeline.fit(x, y)
 	print 'Total Training time:', time.clock() - start
-	return svmPipeline
+	return pipeline
 
 def predict(db, svmPipeline, latitude, longitude):
 	print 'Begin Prediction'
@@ -92,19 +109,20 @@ def predict(db, svmPipeline, latitude, longitude):
 			numNegatives += 1
 		finalPredictions.append(finalPrediction)
 
-
 	return zip(inputVectors.keys(), finalPredictions), numNegatives
 
 
 if __name__ == '__main__':
+	generatePipeline = generateSVMPipeline
+
 	predictions = []
 	start = time.clock()
 	numNegatives = 0
 	with DB() as db:
 		for POI in getPointsOfInterest():
 			print 'POI', POI
-			svmPipeline = generateSVM(db, POI['LAT'], POI['LONG'])
-			POIPredictions, POINegatives = predict(db, svmPipeline, POI['LAT'], POI['LONG'])
+			fitPipeline = fitPipeline(db, POI['LAT'], POI['LONG'], generatePipeline)
+			POIPredictions, POINegatives = predict(db, fitPipeline, POI['LAT'], POI['LONG'])
 			predictions.extend(POIPredictions)
 			numNegatives += POINegatives
 

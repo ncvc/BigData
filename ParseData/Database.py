@@ -85,7 +85,6 @@ class Event(BaseModel):
 	is_time_accurate = BooleanField(index=True)
 	is_time_inferred = BooleanField(index=True)
 
-# Should be ~400 bytes max
 class Tweet(BaseModel):
 	text = CharField(max_length=255, null=True)
 	longitude = DecimalField(max_digits=9, decimal_places=6, null=True)  # Range: (-180, 180)
@@ -410,6 +409,20 @@ class DB:
 
 			index += insertsPerQuery
 
+	@cached
+	def getNumTweetsNearLocation(self, latitude, longitude, startTime, endTime, distInMeters=250):
+		dist = self.metersToCoordDist(distInMeters)
+		return Tweet.select().where(self.isClose(latitude, longitude, Tweet, dist) & (Tweet.created_at.between(startTime, endTime))).count()
+
+	@cached
+	def getNumTweetsNearLocationMentioningTaxi(self, latitude, longitude, startTime, endTime, distInMeters=250):
+		dist = self.metersToCoordDist(distInMeters)
+		return Tweet.select().where(self.isClose(latitude, longitude, Tweet, dist) & (Tweet.mentions_taxi == 1) & (Tweet.created_at.between(startTime, endTime))).count()
+
+	@cached
+	def getNumTweetsMentioningTaxi(self, startTime, endTime):
+		return Tweet.select().where((Tweet.mentions_taxi == 1) & (Tweet.created_at.between(startTime, endTime))).count()
+
 	def addDicts(self, table, dicts, dictToSQLString):
 		# Paginate so the queries don't get too long
 		index = 0
@@ -491,23 +504,23 @@ class DB:
 
 	@cached
 	def getXClosestStations(self, latitude, longitude, x, isStation):
-		return [stop.station for stop in Stop.select().where(Stop.is_station == isStation).order_by(self.getDist(self, latitude, longitude, Stop).asc()).limit(x)]
+		return [stop.station for stop in Stop.select().where(Stop.is_station == isStation).order_by(self.getDist(latitude, longitude, Stop).asc()).limit(x)]
 
 	@cached
 	def getNumTRidesFromStation(self, station, startTime, endTime):
-		return TRide.select().where(TRide.origin == station & TRide.datetime.between(startTime, endTime)).count()
+		return TRide.select().where((TRide.origin == station) & TRide.datetime.between(startTime, endTime)).count()
 
 	@cached
 	def getNumTRidesToStation(self, station, startTime, endTime):
-		return TRide.select().where(TRide.destination == station & TRide.datetime.between(startTime, endTime)).count()
+		return TRide.select().where((TRide.destination == station) & TRide.datetime.between(startTime, endTime)).count()
 
 	@cached
 	def getNumTRidesFromXClosestStations(self, latitude, longitude, startTime, endTime, x):
-		return sum(self.getNumTRidesFromStation(self, station, startTime, endTime) for station in self.getXClosestStations(latitude, longitude, x, True))
+		return sum(self.getNumTRidesFromStation(station, startTime, endTime) for station in self.getXClosestStations(latitude, longitude, x, True))
 
 	@cached
 	def getNumTRidesToXClosestStations(self, latitude, longitude, startTime, endTime, x):
-		return sum(self.getNumTRidesToStation(self, station, startTime, endTime) for station in self.getXClosestStations(latitude, longitude, x, True))
+		return sum(self.getNumTRidesToStation(station, startTime, endTime) for station in self.getXClosestStations(latitude, longitude, x, True))
 
 
 if __name__ == '__main__':

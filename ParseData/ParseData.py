@@ -2,6 +2,8 @@ import csv
 import os
 import json
 import time
+import cPickle as pickle
+import datetime
 
 from Database import DB
 from Config import DATA_FOLDER
@@ -94,6 +96,48 @@ def parseTRides(db):
 			TRides = (dict(zip(fieldNames, parseLine(fieldIndices, line))) for line in f)
 			db.addTRides(TRides)
 
+def parseTRides2(db):
+	print 'Parsing T Rides'
+	places = {}
+	for TFilename in T_FILENAMES:
+		print 'Parsing %s' % TFilename
+		with open(TFilename) as f:
+			header = f.readline()[3:]
+			separator = f.readline()
+
+			# Find the length of each field by parsing the separator line
+			fieldIndices = []
+			index = 0
+			while index != -1:
+				fieldIndices.append(index+1)
+				index = separator.find(' ', index+1)
+
+			fieldNames = parseLine(fieldIndices, header)
+			for line in f:
+				if line == '' or line =='\n':
+					break
+
+				SQLDict = db.TDictToSQLStrings(dict(zip(fieldNames, parseLine(fieldIndices, line))))
+				for label in 'origin', 'destination':
+					place = SQLDict[label]
+					if place not in places:
+						places[place] = {}
+					try:
+						timeObj = datetime.datetime.strptime(SQLDict['datetime'][:13], '%Y-%m-%d %H')
+					except ValueError:
+						print line
+						raise
+					if timeObj not in places[place]:
+						places[place][timeObj] = {}
+						places[place][timeObj]['origin'] = 0
+						places[place][timeObj]['destination'] = 0
+
+					places[place][timeObj][label] += 1
+
+	with open('places.p', 'wb') as f:
+		pickle.dump(places, f)
+
+
 def parseBusRides(db):
 	print 'Parsing Bus Rides'
 	for busFilename in BUS_FILENAMES:
@@ -136,6 +180,6 @@ if __name__ == '__main__':
 	start = time.clock()
 
 	with DB() as db:
-		parseStops(db)
+		parseTRides2(db)
 
 	print 'Total time:', time.clock() - start

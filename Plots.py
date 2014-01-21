@@ -142,3 +142,6 @@ if __name__ == '__main__':
 	# plot(generateWeekday, xLabel='Day of week')
 	# plot(generateAfterEvent, xLabel='Num of ongoing events')
 	featureSelection()
+	# with DB() as db:
+	# 	for POI in getPointsOfInterest():
+	# 		print len(db.getXClosestStations(POI['LAT'], POI['LONG'], 3, True))

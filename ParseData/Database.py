@@ -155,6 +155,8 @@ class DB:
 		database.connect()
 		database.execute_sql('SET NAMES utf8mb4;')  # Necessary for some emojis
 		self.queryCache = None
+		with open('places.p', 'rb') as f:
+			self.TRideCache = pickle.load(f)
 		return self
 
 	def __exit__(self, excType, excValue, excTraceback):
@@ -163,12 +165,15 @@ class DB:
 		database.close()
 
 	def saveQueryCache(self):
-		if self.queryCache != None:
-			pickle.dump(self.queryCache, open(PICKUPS_CACHE_FILENAME, 'wb'))
+		pass
+		# if self.queryCache != None:
+		# 	with open(PICKUPS_CACHE_FILENAME, 'wb') as f:
+		# 		pickle.dump(self.queryCache, f)
 
 	def loadQueryCache(self):
 		try:
-			self.queryCache = pickle.load(open(PICKUPS_CACHE_FILENAME, 'rb'))
+			with open(PICKUPS_CACHE_FILENAME, 'rb') as f:
+				self.queryCache = pickle.load(f)
 		except IOError:
 			self.queryCache = {}
 		
@@ -285,12 +290,12 @@ class DB:
 	def afterNumEvents(self, lat, lon, time, maxHoursAfterEvent, distInMeters=250):
 		dist = self.metersToCoordDist(distInMeters)
 		earliestEndTime = time - datetime.timedelta(hours=maxHoursAfterEvent)
-		return Event.select().where(self.isClose(lat, lon, Event, dist) & (Event.is_time_accurate == 1) & Event.end_time.between(earliestEndTime, time)).count()
+		return int(Event.select().where(self.isClose(lat, lon, Event, dist) & (Event.is_time_accurate == 1) & Event.end_time.between(earliestEndTime, time)).count())
 
 	@cached
 	def duringNumEvents(self, lat, lon, time, distInMeters=250):
 		dist = self.metersToCoordDist(distInMeters)
-		return Event.select().where(self.isClose(lat, lon, Event, dist) & (Event.is_time_accurate == 1) & (Event.start_time < time) & (Event.end_time > time)).count()
+		return int(Event.select().where(self.isClose(lat, lon, Event, dist) & (Event.is_time_accurate == 1) & (Event.start_time < time) & (Event.end_time > time)).count())
 
 	# Infer the time
 	def inferTime(self, description):
@@ -412,16 +417,16 @@ class DB:
 	@cached
 	def getNumTweetsNearLocation(self, latitude, longitude, startTime, endTime, distInMeters=250):
 		dist = self.metersToCoordDist(distInMeters)
-		return Tweet.select().where(self.isClose(latitude, longitude, Tweet, dist) & (Tweet.created_at.between(startTime, endTime))).count()
+		return int(Tweet.select().where(self.isClose(latitude, longitude, Tweet, dist) & (Tweet.created_at.between(startTime, endTime))).count())
 
 	@cached
 	def getNumTweetsNearLocationMentioningTaxi(self, latitude, longitude, startTime, endTime, distInMeters=250):
 		dist = self.metersToCoordDist(distInMeters)
-		return Tweet.select().where(self.isClose(latitude, longitude, Tweet, dist) & (Tweet.mentions_taxi == 1) & (Tweet.created_at.between(startTime, endTime))).count()
+		return int(Tweet.select().where(self.isClose(latitude, longitude, Tweet, dist) & (Tweet.mentions_taxi == 1) & (Tweet.created_at.between(startTime, endTime))).count())
 
 	@cached
 	def getNumTweetsMentioningTaxi(self, startTime, endTime):
-		return Tweet.select().where((Tweet.mentions_taxi == 1) & (Tweet.created_at.between(startTime, endTime))).count()
+		return int(Tweet.select().where((Tweet.mentions_taxi == 1) & (Tweet.created_at.between(startTime, endTime))).count())
 
 	def addDicts(self, table, dicts, dictToSQLString):
 		# Paginate so the queries don't get too long
@@ -506,13 +511,26 @@ class DB:
 	def getXClosestStations(self, latitude, longitude, x, isStation):
 		return [stop.station for stop in Stop.select().where(Stop.is_station == isStation).order_by(self.getDist(latitude, longitude, Stop).asc()).limit(x)]
 
+	def getNumTRides(self, station, startTime, endTime, label):
+		currentTime = datetime.datetime(startTime.year, startTime.month, startTime.day, startTime.hour)
+		total = 0
+		while currentTime < endTime:
+			try:
+				total += self.TRideCache[station][currentTime][label]
+			except KeyError:
+				pass
+			currentTime += datetime.timedelta(hours=1)
+		return total
+
 	@cached
 	def getNumTRidesFromStation(self, station, startTime, endTime):
-		return TRide.select().where((TRide.origin == station) & TRide.datetime.between(startTime, endTime)).count()
+		return self.getNumTRides(station, startTime, endTime, 'origin')
+		# return int(TRide.select().where((TRide.origin == station) & TRide.datetime.between(startTime, endTime)).count())
 
 	@cached
 	def getNumTRidesToStation(self, station, startTime, endTime):
-		return TRide.select().where((TRide.destination == station) & TRide.datetime.between(startTime, endTime)).count()
+		return self.getNumTRides(station, startTime, endTime, 'destination')
+		# return int(TRide.select().where((TRide.destination == station) & TRide.datetime.between(startTime, endTime)).count())
 
 	@cached
 	def getNumTRidesFromXClosestStations(self, latitude, longitude, startTime, endTime, x):

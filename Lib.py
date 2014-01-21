@@ -6,16 +6,18 @@ import math
 from ParseData.Config import DATA_FOLDER
 
 
-TEST_DATASET_INTIAL_FILENAME = os.path.join(DATA_FOLDER, 'test1.txt')
+TEST_DATASET_INITIAL_FILENAME = os.path.join(DATA_FOLDER, 'test1.txt')
 TEST_DATASET_FINAL_FILENAME = os.path.join(DATA_FOLDER, 'test2.txt')
 POINTS_OF_INTEREST_FILENAME = os.path.join(DATA_FOLDER, 'interestpoints.csv')
 
 START_TIME = datetime.datetime(2012, 5, 1, 1)
-# END_TIME = datetime.datetime(2012, 5, 3)
 END_TIME = datetime.datetime(2012, 12, 1)
 
+START_TIME = datetime.datetime(2012, 5, 1, 3)
+END_TIME = datetime.datetime(2012, 7, 1)
 
-def loadTestDataset(filename=TEST_DATASET_INTIAL_FILENAME):
+
+def loadTestDataset(filename=TEST_DATASET_INITIAL_FILENAME):
 	# Read the data
 	with open(filename) as f:
 		testDataset = list(csv.DictReader(f, fieldnames=['id', 'start', 'end', 'lat', 'long']))
@@ -29,7 +31,7 @@ def loadTestDataset(filename=TEST_DATASET_INTIAL_FILENAME):
 	return testDataset
 
 def getRemovedTimes():
-	initialTestDataset = loadTestDataset(filename=TEST_DATASET_INTIAL_FILENAME)
+	initialTestDataset = loadTestDataset(filename=TEST_DATASET_INITIAL_FILENAME)
 	finalTestDataset = loadTestDataset(filename=TEST_DATASET_FINAL_FILENAME)
 
 	removedTimes = set()
@@ -94,8 +96,8 @@ weekdays = [[math.sin(x * 2.0 * math.pi / 7.0), math.cos(x * 2.0 * math.pi / 7.0
 times = [[math.sin(x * 2.0 * math.pi / 24.0), math.cos(x * 2.0 * math.pi / 24.0)] for x in xrange(24)]
 def generateAllFeatures(db, latitude, longitude, time):
 	# Day of the week and time of day
-	# timeFeatures = [time.weekday(), time.hour]
-	timeFeatures = weekdays[time.weekday()] + times[time.hour]
+	timeFeatures = [time.weekday(), time.hour]
+	# timeFeatures = weekdays[time.weekday()] + times[time.hour]
 	
 	# Weather
 	weather = db.getWeather(time)
@@ -108,8 +110,18 @@ def generateAllFeatures(db, latitude, longitude, time):
 	heatindex = weather.heatindexi
 	if heatindex == None:
 		heatindex = 0.0
-	# Not weather.conds
-	weatherFeatures = [weather.tempi, precip, weather.hum, weather.wspdi, windchill, heatindex, weather.fog, weather.rain, weather.snow, weather.thunder]
+	# Maybe remove: weather.wspdi
+	weatherFeatures = [float(weather.tempi), float(weather.wspdi), float(windchill), float(heatindex), int(weather.rain), int(weather.thunder)]
+
+	# Pickups near the given timeframe
+	numPickupsBefore = db.getNumPickupsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
+	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
+
+	numDropoffsBefore1 = db.getNumDropoffsNearLocation(latitude, longitude, time - datetime.timedelta(hours=1), time)
+	numDropoffsBefore2 = db.getNumDropoffsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
+	numDropoffsDuring = db.getNumDropoffsNearLocation(latitude, longitude, time, time + datetime.timedelta(hours=1))
+	numDropoffsAfter = db.getNumDropoffsNearLocation(latitude, longitude, time + datetime.timedelta(hours=1), time + datetime.timedelta(hours=2))
+	pickupFeatures = [numPickupsBefore, numPickupsAfter, numDropoffsBefore1, numDropoffsBefore2, numDropoffsDuring, numDropoffsAfter]
 
 	# Events
 	afterNumEvents = [db.afterNumEvents(latitude, longitude, time, i) for i in xrange(4)]
@@ -117,17 +129,24 @@ def generateAllFeatures(db, latitude, longitude, time):
 
 	eventFeatures = afterNumEvents + duringNumEvents
 
-	# Pickups near the given timeframe
-	numPickupsBefore = db.getNumPickupsNearLocation(latitude, longitude, time - datetime.timedelta(hours=2), time - datetime.timedelta(hours=1))
-	numPickupsAfter = db.getNumPickupsNearLocation(latitude, longitude, time + datetime.timedelta(hours=3), time + datetime.timedelta(hours=4))
+	# Tweets
+	# TODO: try 1-hour interval
+	# nearLoc = db.getNumTweetsNearLocation(latitude, longitude, time, time+datetime.timedelta(hours=2), distInMeters=250)
+	# nearLocMentioningTaxi = db.getNumTweetsNearLocationMentioningTaxi(latitude, longitude, time, time+datetime.timedelta(hours=2), distInMeters=250)
+	# mentioningTaxi = db.getNumTweetsMentioningTaxi(time, time+datetime.timedelta(hours=2))
+	# tweetFeatures = [nearLoc, nearLocMentioningTaxi, mentioningTaxi]
 
-	numDropoffsBefore = db.getNumDropoffsNearLocation(latitude, longitude, time - datetime.timedelta(hours=1), time)
-	numDropoffsDuring = db.getNumDropoffsNearLocation(latitude, longitude, time, time + datetime.timedelta(hours=1))
-	numDropoffsAfter = db.getNumDropoffsNearLocation(latitude, longitude, time + datetime.timedelta(hours=1), time + datetime.timedelta(hours=2))
-	pickupFeatures = [numPickupsBefore, numPickupsAfter, numDropoffsBefore, numDropoffsDuring, numDropoffsAfter]
+	# T Ride features
+	TFeatures = []
+	# TFeatures.extend([db.getNumTRidesToXClosestStations(latitude, longitude, time + datetime.timedelta(hours=hours), time + datetime.timedelta(hours=hours+1), 2) for hours in xrange(3)])
+	# TFeatures.append(db.getNumTRidesToXClosestStations(latitude, longitude, time - datetime.timedelta(hours=1), time, 3))
+	# TFeatures.append(db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=1), 3))
+	# TFeatures.append(db.getNumTRidesFromXClosestStations(latitude, longitude, time - datetime.timedelta(hours=1), time, 3))
+	# TFeatures.append(db.getNumTRidesFromXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=1), 3))
 
 	# Generate the vector
-	inputVector = tuple(timeFeatures + weatherFeatures + pickupFeatures + eventFeatures)
+	# inputVector = tuple(timeFeatures + weatherFeatures + pickupFeatures + eventFeatures + tweetFeatures)
+	inputVector = tuple(timeFeatures + weatherFeatures + pickupFeatures)# + eventFeatures)# + tweetFeatures + TFeatures)
 	if any(inp == None for inp in inputVector):
 		print 'Some input is None:', inputVector
 	return inputVector
@@ -148,20 +167,6 @@ def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
 	# Day of the week and time of day
 	timeFeatures = [time.weekday(), time.hour]
 	timeFeatures2 = weekdays[time.weekday()] + times[time.hour]
-	
-	# Weather
-	weather = db.getWeather(time)
-	# precip = weather.precipm
-	# if precip == None:
-	# 	precip = 0.0
-	# windchill = weather.windchilli
-	# if windchill == None:
-	# 	windchill = 0.0
-	# heatindex = weather.heatindexi
-	# if heatindex == None:
-	# 	heatindex = 0.0
-	# # Not weather.conds
-	# weatherFeatures = [weather.tempi, precip, weather.hum, weather.wspdi, windchill, heatindex, weather.fog, weather.rain, weather.snow, weather.thunder]
 
 	# Events
 	afterNumEvents = [db.afterNumEvents(latitude, longitude, time, i) for i in xrange(4)]
@@ -175,6 +180,11 @@ def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
 	pickupFeatures = [numPickupsBefore, numPickupsAfter]
 
 	# T Rides
+	TFeatures = []
+	TFeatures.extend([db.getNumTRidesToXClosestStations(latitude, longitude, time + datetime.timedelta(hours=hours), time + datetime.timedelta(hours=hours+1), 2) for hours in xrange(3)])
+	for x in xrange(1,4):
+		TFeatures.extend([db.getNumTRidesFromXClosestStations(latitude, longitude, time - datetime.timedelta(hours=hours+1), time - datetime.timedelta(hours=hours), x) for hours in xrange(2)])
+		TFeatures.extend([db.getNumTRidesFromXClosestStations(latitude, longitude, time + datetime.timedelta(hours=hours), time + datetime.timedelta(hours=hours+1), x) for hours in xrange(3)])
 	# numTRides1 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 1) for hours in xrange(-2,3)]
 	# numTRides2 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 2) for hours in xrange(-2,3)]
 	# numTRides3 = [db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=hours), 3) for hours in xrange(-2,3)]
@@ -182,17 +192,16 @@ def generateAllFeaturesExceptWeather(db, latitude, longitude, time):
 	# numTRides1 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 1)
 	# numTRides2 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 2)
 	# numTRides3 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 3)
-	numTRides4 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 4)
-	TFeatures = [numTRides4]
+	# numTRides4 = db.getNumTRidesToXClosestStations(latitude, longitude, time, time + datetime.timedelta(hours=0), 4)
+	# TFeatures = numTRides1 + numTRides2 + numTRides3 + numTRides4
 
 	# Tweets
-	nearLoc = db.getNumTweetsNearLocation(latitude, longitude, startTime, endTime, distInMeters=250)
-	nearLocMentioningTaxi = db.getNumTweetsNearLocationMentioningTaxi(latitude, longitude, startTime, endTime, distInMeters=250)
-	mentioningTaxi = db.getNumTweetsMentioningTaxi(startTime, endTime)
+	nearLoc = db.getNumTweetsNearLocation(latitude, longitude, time, time+datetime.timedelta(hours=2), distInMeters=250)
+	nearLocMentioningTaxi = db.getNumTweetsNearLocationMentioningTaxi(latitude, longitude, time, time+datetime.timedelta(hours=2), distInMeters=250)
+	mentioningTaxi = db.getNumTweetsMentioningTaxi(time, time+datetime.timedelta(hours=2))
 	tweetFeatures = [nearLoc, nearLocMentioningTaxi, mentioningTaxi]
 
 	# Generate the vector
-	inputVector = tuple(timeFeatures + pickupFeatures + eventFeatures)
 	inputVector = tuple(timeFeatures + pickupFeatures + TFeatures)
 	if any(inp == None for inp in inputVector):
 		print 'Some input is None:', inputVector
